@@ -1,20 +1,46 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Net;
-using System.Net.Http;
 using System.Web.Http;
 using System.Data.SqlClient;
+using Microsoft.Azure.Services.AppAuthentication;
+using Microsoft.Azure.KeyVault;
+using System.Configuration;
 
 namespace SimpleSqlBackend.Controllers
 {
     public class ItemsController : ApiController
     {
-		const string connStr = "Server=localhost;Initial Catalog=TodoItems;Integrated Security=SSPI;Persist Security Info=True;";
+		private string connStr = "";
 
-        // GET: api/Items
-        public IEnumerable<TodoItem> Get()
+		private void GetSecret()
+		{
+			// Check if we are in Azure running under a managed service identity (if so the MSI_ENDPOINT environmental variable will be present)
+			if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable("MSI_ENDPOINT")))
+			{
+				// Get the connection string from the web.config (or app settings)
+				connStr = ConfigurationManager.AppSettings["DbConnectionString"];
+			}
+			else
+			{
+				// Running in Azure - use the token provider to get a token to access keyvault with
+				var azureServiceTokenProvider = new AzureServiceTokenProvider();
+				var keyVaultClient = new KeyVaultClient(new KeyVaultClient.AuthenticationCallback(azureServiceTokenProvider.KeyVaultTokenCallback));
+
+				// Get the URL of the secret from web.config
+				string secretUri = ConfigurationManager.AppSettings["DbConnStrKeyVaultSecretUri"];
+
+				// Now get the connection string from keyvault
+				var secret = keyVaultClient.GetSecretAsync(secretUri).Result;
+				connStr = secret.Value;
+				// TODO: handle errors if the web app cannot connect to the keyvault or get the secret. 
+				// Also, this should be cached and refeshed if there are connection errors (e.g. the key is cycled) 
+			}
+		}
+
+		// GET: api/Items
+		public IEnumerable<TodoItem> Get()
         {
+			GetSecret();
 			List<TodoItem> items = new List<TodoItem>();
 			using (var connection = new SqlConnection(connStr))
 			{
@@ -35,12 +61,12 @@ namespace SimpleSqlBackend.Controllers
 				}
 			}
 			return items;
-			//return new TodoItem[] { new TodoItem { ItemName = "foo", ItemCreateDate = DateTime.Now }, new TodoItem { ItemName = "bar", ItemCreateDate = DateTime.Now } };
         }
 
         // POST: api/Items
         public TodoItem Post(TodoItem newItem)
         {
+			GetSecret();
 			newItem.ItemCreateDate = DateTime.Now;
 			using (var connection = new SqlConnection(connStr))
 			{
@@ -59,6 +85,7 @@ namespace SimpleSqlBackend.Controllers
         // DELETE: api/Items/5
         public void Delete(int id)
         {
+			GetSecret();
 			using (var connection = new SqlConnection(connStr))
 			{
 				string query = "delete from TodoItems where id = @ItemId";
@@ -68,5 +95,5 @@ namespace SimpleSqlBackend.Controllers
 				myCommand.ExecuteNonQuery();
 			}
 		}
-    }
+	}
 }
