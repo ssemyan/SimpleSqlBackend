@@ -1,5 +1,5 @@
 # SimpleSqlBackend
-A simple SQL backend to store items in a SQL database
+A simple SQL backend to store items in a SQL database using C# and .NET Framework 4.6.1
 
 This WebAPI backend can be used with a simple website like [SimpleFrontEnd](https://github.com/ssemyan/SimpleFrontEnd)
 
